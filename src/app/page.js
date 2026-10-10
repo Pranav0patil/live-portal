@@ -7,6 +7,7 @@ import {
   Track,
   createLocalTracks,
   createLocalVideoTrack,
+  VideoPresets,
 } from "livekit-client";
 
 export default function LivePortal() {
@@ -79,6 +80,19 @@ export default function LivePortal() {
         adaptiveStream: true,
         dynacast: true,
         autoSubscribe: true,
+        // High quality video publishing configuration
+        videoCaptureDefaults: {
+          resolution: VideoPresets.h1080.resolution,
+        },
+        publishDefaults: {
+          videoSimulcastLayers: [
+            VideoPresets.h1080,
+            VideoPresets.h720,
+            VideoPresets.h360,
+          ],
+          videoCodec: "vp8",
+          simulcast: true,
+        },
       });
       roomRef.current = room;
 
@@ -115,14 +129,26 @@ export default function LivePortal() {
       updateParticipantCount(room);
 
       if (isHost) {
-        setStatus("Camera start ho raha hai...");
+        setStatus("High Quality Camera start ho raha hai...");
+
+        // 1080p FHD camera track request
         const localTracks = await createLocalTracks({
-          audio: true,
-          video: { facingMode: "user" },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: {
+            facingMode: "user",
+            resolution: VideoPresets.h1080.resolution,
+          },
         });
 
         for (const track of localTracks) {
-          await room.localParticipant.publishTrack(track);
+          await room.localParticipant.publishTrack(track, {
+            videoEncoding: VideoPresets.h1080.encoding,
+          });
+
           if (track.kind === Track.Kind.Video) {
             localVideoTrackRef.current = track;
             setTimeout(() => {
@@ -145,7 +171,7 @@ export default function LivePortal() {
         }, 300);
       }
 
-      setStatus(isHost ? "🔴 Live Broadcast On Air" : "📺 Streaming Connected");
+      setStatus(isHost ? "🔴 Live Broadcast On Air (HD)" : "📺 Streaming Connected (HD)");
     } catch (err) {
       console.error(err);
       setStatus("Error: " + err.message);
@@ -188,14 +214,13 @@ export default function LivePortal() {
     }
   };
 
-  // 1-Click Auto Front / Back Switch
+  // 1-Click Auto Front / Back Switch with High Quality
   const toggleCameraFacing = async () => {
     if (!roomRef.current || !isHost) return;
 
     try {
       const nextMode = facingMode === "user" ? "environment" : "user";
 
-      // Purana video track unpublish aur stop karein
       const currentPub = Array.from(
         roomRef.current.localParticipant.videoTrackPublications.values()
       )[0];
@@ -205,12 +230,14 @@ export default function LivePortal() {
         currentPub.track.stop();
       }
 
-      // Naya camera track create karein
       const newTrack = await createLocalVideoTrack({
         facingMode: { ideal: nextMode },
+        resolution: VideoPresets.h1080.resolution,
       });
 
-      await roomRef.current.localParticipant.publishTrack(newTrack);
+      await roomRef.current.localParticipant.publishTrack(newTrack, {
+        videoEncoding: VideoPresets.h1080.encoding,
+      });
       localVideoTrackRef.current = newTrack;
 
       if (videoRef.current) {
@@ -224,12 +251,14 @@ export default function LivePortal() {
     }
   };
 
-  // Screen Sharing
+  // Screen Sharing with HD preset
   const toggleScreenShare = async () => {
     if (roomRef.current && isHost) {
       try {
         const enabled = roomRef.current.localParticipant.isScreenShareEnabled;
-        await roomRef.current.localParticipant.setScreenShareEnabled(!enabled);
+        await roomRef.current.localParticipant.setScreenShareEnabled(!enabled, {
+          resolution: VideoPresets.h1080.resolution,
+        });
         setIsScreenSharing(!enabled);
       } catch (e) {
         console.error("Screen share error:", e);
@@ -368,6 +397,9 @@ export default function LivePortal() {
                 </span>
                 <span className="text-xs bg-slate-800 border border-slate-700 px-2 py-0.5 rounded-full text-slate-300">
                   👥 {viewerCount} Live
+                </span>
+                <span className="text-[10px] bg-emerald-950 border border-emerald-700 text-emerald-300 px-2 py-0.5 rounded-full font-bold">
+                  1080p FHD
                 </span>
               </div>
               <button
