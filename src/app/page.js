@@ -9,7 +9,6 @@ import {
   createLocalVideoTrack,
 } from "livekit-client";
 
-// 4K Ultra HD Profile Definition
 const resolution4K = {
   width: 3840,
   height: 2160,
@@ -17,24 +16,23 @@ const resolution4K = {
 };
 
 const encoding4K = {
-  maxBitrate: 8_000_000, // 8 Mbps for ultra-clear video
+  maxBitrate: 8_000_000,
   maxFramerate: 30,
 };
 
 export default function LivePortal() {
   const [userName, setUserName] = useState("");
-  const [roomName, setRoomName] = useState("cjp-live");
+  const roomName = "cjp-live"; // Single fixed official room
   const [isHost, setIsHost] = useState(false);
+  const [hostPin, setHostPin] = useState("");
   const [inRoom, setInRoom] = useState(false);
   const [status, setStatus] = useState("");
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
 
-  // Live Status & Reactions
   const [viewerCount, setViewerCount] = useState(1);
   const [floatingReactions, setFloatingReactions] = useState([]);
 
-  // Host Controls & Auto Camera Mode
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -70,20 +68,25 @@ export default function LivePortal() {
 
   const joinRoom = async (e) => {
     e.preventDefault();
-    if (!userName.trim() || !roomName.trim()) {
-      alert("Kripya Naam aur Room Name bharein!");
+    if (!userName.trim()) {
+      alert("Kripya apna naam bharein!");
+      return;
+    }
+
+    if (isHost && !hostPin.trim()) {
+      alert("Host banne ke liye Host Secret PIN daalna zaroori hai!");
       return;
     }
 
     try {
-      setStatus("Token fetch kiya ja raha hai...");
+      setStatus("Verifying credentials...");
       const res = await fetch(
-        `/api/token?room=${encodeURIComponent(roomName)}&username=${encodeURIComponent(userName)}&isHost=${isHost}`
+        `/api/token?username=${encodeURIComponent(userName)}&isHost=${isHost}&pin=${encodeURIComponent(hostPin)}`
       );
       const data = await res.json();
 
       if (!res.ok || !data.token) {
-        throw new Error(data.error || "Token fetch fail ho gaya");
+        throw new Error(data.error || "Connection fail ho gaya");
       }
 
       setStatus("Room se connect ho raha hai...");
@@ -134,7 +137,7 @@ export default function LivePortal() {
       updateParticipantCount(room);
 
       if (isHost) {
-        setStatus("4K Ultra HD Camera start ho raha hai...");
+        setStatus("Host Camera activate ho raha hai...");
 
         const localTracks = await createLocalTracks({
           audio: {
@@ -175,10 +178,11 @@ export default function LivePortal() {
         }, 300);
       }
 
-      setStatus(isHost ? "🔴 Live Broadcast On Air (4K UHD)" : "📺 Streaming Connected (4K UHD)");
+      setStatus(isHost ? "🔴 CJP Official Broadcast LIVE" : "📺 Watching CJP Live");
     } catch (err) {
       console.error(err);
       setStatus("Error: " + err.message);
+      alert(err.message);
     }
   };
 
@@ -200,7 +204,6 @@ export default function LivePortal() {
     setFacingMode("user");
   };
 
-  // Host Mic Toggle
   const toggleMic = async () => {
     if (roomRef.current && isHost) {
       const enabled = roomRef.current.localParticipant.isMicrophoneEnabled;
@@ -209,7 +212,6 @@ export default function LivePortal() {
     }
   };
 
-  // Host Camera Toggle
   const toggleCamera = async () => {
     if (roomRef.current && isHost) {
       const enabled = roomRef.current.localParticipant.isCameraEnabled;
@@ -218,13 +220,11 @@ export default function LivePortal() {
     }
   };
 
-  // 1-Click Auto Front / Back Switch in 4K
   const toggleCameraFacing = async () => {
     if (!roomRef.current || !isHost) return;
 
     try {
       const nextMode = facingMode === "user" ? "environment" : "user";
-
       const currentPub = Array.from(
         roomRef.current.localParticipant.videoTrackPublications.values()
       )[0];
@@ -255,7 +255,6 @@ export default function LivePortal() {
     }
   };
 
-  // Screen Sharing
   const toggleScreenShare = async () => {
     if (roomRef.current && isHost) {
       try {
@@ -270,7 +269,6 @@ export default function LivePortal() {
     }
   };
 
-  // Landscape / Fullscreen
   const toggleLandscapeFullscreen = async () => {
     try {
       if (!document.fullscreenElement) {
@@ -293,7 +291,6 @@ export default function LivePortal() {
     }
   };
 
-  // Send Chat
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!chatInput.trim() || !roomRef.current) return;
@@ -313,7 +310,6 @@ export default function LivePortal() {
     setChatInput("");
   };
 
-  // Reactions
   const sendReaction = async (emoji) => {
     if (!roomRef.current) return;
 
@@ -336,7 +332,7 @@ export default function LivePortal() {
       <audio ref={audioRef} autoPlay />
 
       <h1 className="text-xl md:text-2xl font-bold mb-4 text-blue-400">
-        Live Streaming Portal
+        CJP Live Streaming Portal
       </h1>
 
       {!inRoom ? (
@@ -348,7 +344,7 @@ export default function LivePortal() {
             <label className="text-xs text-slate-400 mb-1 block">Aapka Naam:</label>
             <input
               type="text"
-              placeholder="Ex: Pranav"
+              placeholder="Ex: Viewer Name / Pranav"
               value={userName}
               onChange={(e) => setUserName(e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-blue-500"
@@ -357,14 +353,12 @@ export default function LivePortal() {
           </div>
 
           <div>
-            <label className="text-xs text-slate-400 mb-1 block">Room Name:</label>
+            <label className="text-xs text-slate-400 mb-1 block">Official Channel:</label>
             <input
               type="text"
-              placeholder="cjp-live"
-              value={roomName}
-              onChange={(e) => setRoomName(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-blue-500"
-              required
+              value="cjp-live"
+              disabled
+              className="w-full bg-slate-800/50 border border-slate-700 px-3 py-2 rounded-lg text-sm text-slate-400 cursor-not-allowed font-semibold"
             />
           </div>
 
@@ -377,30 +371,43 @@ export default function LivePortal() {
               className="w-4 h-4 rounded cursor-pointer accent-blue-600"
             />
             <label htmlFor="hostCheck" className="text-xs text-slate-300 cursor-pointer">
-              Mai Host (Broadcaster) banna chahta hu
+              Mai Host (Broadcaster) hu
             </label>
           </div>
+
+          {/* Host PIN Input sirf Host tick karne par aayega */}
+          {isHost && (
+            <div>
+              <label className="text-xs text-amber-400 mb-1 block">Host Secret PIN:</label>
+              <input
+                type="password"
+                placeholder="Enter secret PIN"
+                value={hostPin}
+                onChange={(e) => setHostPin(e.target.value)}
+                className="w-full bg-slate-800 border border-amber-500/50 px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-amber-400"
+                required
+              />
+            </div>
+          )}
 
           <button
             type="submit"
             className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg text-sm transition"
           >
-            {isHost ? "Start Stream as Host 🚀" : "Join as Viewer 📺"}
+            {isHost ? "Login & Go Live 🚀" : "Watch CJP Live 📺"}
           </button>
         </form>
       ) : (
         <div className="w-full max-w-5xl flex flex-col lg:flex-row gap-4">
-          {/* Main Video Box */}
           <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-3 md:p-4 flex flex-col shadow-xl">
-            {/* Header */}
             <div className="flex justify-between items-center mb-3">
               <div className="flex items-center gap-3">
                 <span className="text-xs md:text-sm font-semibold flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
-                  {roomName}
+                  CJP Official Live
                 </span>
                 <span className="text-xs bg-slate-800 border border-slate-700 px-2 py-0.5 rounded-full text-slate-300">
-                  👥 {viewerCount} Live
+                  👥 {viewerCount} Watching
                 </span>
                 <span className="text-[10px] bg-purple-950 border border-purple-700 text-purple-300 px-2 py-0.5 rounded-full font-bold">
                   4K UHD
@@ -414,7 +421,6 @@ export default function LivePortal() {
               </button>
             </div>
 
-            {/* Video Container */}
             <div
               ref={videoContainerRef}
               className="relative aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center"
@@ -433,7 +439,6 @@ export default function LivePortal() {
                 </div>
               )}
 
-              {/* Landscape Button */}
               <button
                 type="button"
                 onClick={toggleLandscapeFullscreen}
@@ -443,7 +448,6 @@ export default function LivePortal() {
                 🔄 Landscape ⛶
               </button>
 
-              {/* Floating Reaction Animation */}
               <div className="absolute bottom-4 right-4 pointer-events-none flex flex-col-reverse items-center overflow-hidden h-48 w-16 z-10">
                 {floatingReactions.map((r) => (
                   <span
@@ -456,7 +460,6 @@ export default function LivePortal() {
               </div>
             </div>
 
-            {/* Reactions & Auto Flip Camera */}
             <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-800">
               <div className="flex gap-2">
                 <button
@@ -475,7 +478,6 @@ export default function LivePortal() {
                 </button>
               </div>
 
-              {/* 1-Click Flip Button */}
               {isHost && (
                 <button
                   type="button"
@@ -487,7 +489,6 @@ export default function LivePortal() {
               )}
             </div>
 
-            {/* Host Controls */}
             {isHost && (
               <div className="flex flex-wrap gap-2 justify-center mt-3 pt-2 border-t border-slate-800">
                 <button
@@ -523,7 +524,6 @@ export default function LivePortal() {
             )}
           </div>
 
-          {/* Chat Window */}
           <div className="w-full lg:w-80 bg-slate-900 border border-slate-800 rounded-xl p-3 md:p-4 flex flex-col h-80 lg:h-auto shadow-xl">
             <h2 className="text-xs md:text-sm font-semibold border-b border-slate-800 pb-2 mb-2 text-slate-300">
               Live Chat 💬

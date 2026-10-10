@@ -1,16 +1,28 @@
 import { AccessToken } from "livekit-server-sdk";
 import { NextResponse } from "next/server";
 
+// Aapka private Host password (ise badal bhi sakte hain)
+const HOST_SECRET_PIN = "cjp@2026"; 
+
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
-  const room = searchParams.get("room");
+  const room = "cjp-live"; // Room fix ho gaya
   const username = searchParams.get("username");
   const isHost = searchParams.get("isHost") === "true";
+  const pin = searchParams.get("pin");
 
-  if (!room || !username) {
+  if (!username) {
     return NextResponse.json(
-      { error: "Room aur username zaroori hain" },
+      { error: "Naam daalna zaroori hai" },
       { status: 400 }
+    );
+  }
+
+  // Agar koi Host banne ki koshish kare aur PIN galat ho
+  if (isHost && pin !== HOST_SECRET_PIN) {
+    return NextResponse.json(
+      { error: "Galat Host PIN! Sirf official host broadcast kar sakta hai." },
+      { status: 403 }
     );
   }
 
@@ -29,13 +41,12 @@ export async function GET(req) {
     name: username,
   });
 
-  // Host aur Viewer dono ke liye permissions:
   at.addGrant({
     room: room,
     roomJoin: true,
-    canPublish: isHost,        // Sirf Host audio/video broadcast karega
-    canPublishData: true,    // Host aur Viewer DONO chat aur reactions bhej sakein
-    canSubscribe: true,      // Sabhi ek doosre ka data/stream dekh sakein
+    canPublish: isHost,     // Sirf valid PIN wala Host broadcast karega
+    canPublishData: true,   // Chat aur reactions sabhi bhej sakte hain
+    canSubscribe: true,
   });
 
   const token = await at.toJwt();
