@@ -22,29 +22,17 @@ export default function LivePortal() {
   const [viewerCount, setViewerCount] = useState(1);
   const [floatingReactions, setFloatingReactions] = useState([]);
 
-  // Host Controls & Multi-Camera
+  // Host Controls & Auto Camera Mode ('user' = Front, 'environment' = Back)
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [videoDevices, setVideoDevices] = useState([]);
-  const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
+  const [facingMode, setFacingMode] = useState("user");
 
   const roomRef = useRef(null);
   const videoRef = useRef(null);
   const audioRef = useRef(null);
   const videoContainerRef = useRef(null);
   const localVideoTrackRef = useRef(null);
-
-  // Available camera list nikalne ke liye
-  const getCameras = async () => {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const cams = devices.filter((d) => d.kind === "videoinput");
-      setVideoDevices(cams);
-    } catch (e) {
-      console.error("Camera detect error:", e);
-    }
-  };
 
   const updateParticipantCount = (room) => {
     setViewerCount(room.remoteParticipants.size + 1);
@@ -94,7 +82,6 @@ export default function LivePortal() {
       });
       roomRef.current = room;
 
-      // Viewer track subscribed event
       room.on(RoomEvent.TrackSubscribed, (track) => {
         attachTrackSafely(track);
       });
@@ -103,11 +90,9 @@ export default function LivePortal() {
         track.detach();
       });
 
-      // Participant count update
       room.on(RoomEvent.ParticipantConnected, () => updateParticipantCount(room));
       room.on(RoomEvent.ParticipantDisconnected, () => updateParticipantCount(room));
 
-      // Chat & Reactions
       room.on(RoomEvent.DataReceived, (payload) => {
         try {
           const str = new TextDecoder().decode(payload);
@@ -126,15 +111,11 @@ export default function LivePortal() {
       const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
       await room.connect(livekitUrl, data.token);
 
-      // UI state activate karna taaki video element DOM me render ho jaye
       setInRoom(true);
       updateParticipantCount(room);
 
-      // Agar Host hai: Direct local tracks banakar publish karenge
       if (isHost) {
         setStatus("Camera start ho raha hai...");
-        await getCameras();
-
         const localTracks = await createLocalTracks({
           audio: true,
           video: { facingMode: "user" },
@@ -144,7 +125,6 @@ export default function LivePortal() {
           await room.localParticipant.publishTrack(track);
           if (track.kind === Track.Kind.Video) {
             localVideoTrackRef.current = track;
-            // Short delay to ensure video element is mounted in DOM
             setTimeout(() => {
               if (videoRef.current) {
                 track.attach(videoRef.current);
@@ -154,7 +134,6 @@ export default function LivePortal() {
           }
         }
       } else {
-        // Agar Viewer late join kar raha hai, toh active host tracks attach karein
         setTimeout(() => {
           room.remoteParticipants.forEach((p) => {
             p.trackPublications.forEach((pub) => {
@@ -188,7 +167,7 @@ export default function LivePortal() {
     setIsMuted(false);
     setIsVideoOff(false);
     setIsScreenSharing(false);
-    setVideoDevices([]);
+    setFacingMode("user");
   };
 
   // Host Mic Toggle
@@ -209,18 +188,14 @@ export default function LivePortal() {
     }
   };
 
-  // Multi-Camera Switch
-  const switchCamera = async () => {
-    if (!roomRef.current || !isHost || videoDevices.length <= 1) return;
+  // 1-Click Auto Front / Back Switch
+  const toggleCameraFacing = async () => {
+    if (!roomRef.current || !isHost) return;
 
     try {
-      const nextIndex = (currentCameraIndex + 1) % videoDevices.length;
-      const nextDevice = videoDevices[nextIndex];
+      const nextMode = facingMode === "user" ? "environment" : "user";
 
-      const newTrack = await createLocalVideoTrack({
-        deviceId: nextDevice.deviceId,
-      });
-
+      // Purana video track unpublish aur stop karein
       const currentPub = Array.from(
         roomRef.current.localParticipant.videoTrackPublications.values()
       )[0];
@@ -230,6 +205,11 @@ export default function LivePortal() {
         currentPub.track.stop();
       }
 
+      // Naya camera track create karein
+      const newTrack = await createLocalVideoTrack({
+        facingMode: { ideal: nextMode },
+      });
+
       await roomRef.current.localParticipant.publishTrack(newTrack);
       localVideoTrackRef.current = newTrack;
 
@@ -238,7 +218,7 @@ export default function LivePortal() {
         videoRef.current.play().catch(() => {});
       }
 
-      setCurrentCameraIndex(nextIndex);
+      setFacingMode(nextMode);
     } catch (err) {
       console.error("Camera switch error:", err);
     }
@@ -257,7 +237,7 @@ export default function LivePortal() {
     }
   };
 
-  // Landscape / Fullscreen Toggle
+  // Landscape / Fullscreen
   const toggleLandscapeFullscreen = async () => {
     try {
       if (!document.fullscreenElement) {
@@ -280,7 +260,7 @@ export default function LivePortal() {
     }
   };
 
-  // Send Message
+  // Chat message send
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!chatInput.trim() || !roomRef.current) return;
@@ -300,7 +280,7 @@ export default function LivePortal() {
     setChatInput("");
   };
 
-  // Send Reaction
+  // Reactions
   const sendReaction = async (emoji) => {
     if (!roomRef.current) return;
 
@@ -417,7 +397,7 @@ export default function LivePortal() {
                 </div>
               )}
 
-              {/* Landscape / Fullscreen Button */}
+              {/* Landscape Button */}
               <button
                 type="button"
                 onClick={toggleLandscapeFullscreen}
@@ -440,7 +420,7 @@ export default function LivePortal() {
               </div>
             </div>
 
-            {/* Reactions & Mobile Camera Controls */}
+            {/* Reactions & Auto Camera Switch Button */}
             <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-800">
               <div className="flex gap-2">
                 <button
@@ -459,14 +439,14 @@ export default function LivePortal() {
                 </button>
               </div>
 
-              {/* Multi-Camera Switcher */}
-              {isHost && videoDevices.length > 1 && (
+              {/* 1-Click Front / Back Camera Switch */}
+              {isHost && (
                 <button
                   type="button"
-                  onClick={switchCamera}
-                  className="bg-blue-600 hover:bg-blue-700 text-xs px-3 py-1.5 rounded-lg font-medium transition"
+                  onClick={toggleCameraFacing}
+                  className="bg-blue-600 hover:bg-blue-700 text-xs px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5"
                 >
-                  🔄 Switch Cam ({currentCameraIndex + 1}/{videoDevices.length})
+                  🔄 Flip Cam ({facingMode === "user" ? "Front" : "Back"})
                 </button>
               )}
             </div>
