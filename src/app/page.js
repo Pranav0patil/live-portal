@@ -25,8 +25,10 @@ export default function LivePortal() {
 
   const roomRef = useRef(null);
   const videoRef = useRef(null);
+  const audioRef = useRef(null);
+  const videoContainerRef = useRef(null);
 
-  // Available camera list nikalne ke liye
+  // Available camera list
   const getCameras = async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -38,7 +40,6 @@ export default function LivePortal() {
   };
 
   const updateParticipantCount = (room) => {
-    // Total log (Remote participants + 1 local user)
     setViewerCount(room.remoteParticipants.size + 1);
   };
 
@@ -75,10 +76,13 @@ export default function LivePortal() {
       });
       roomRef.current = room;
 
-      // 1. Viewer ke liye Host ka video attach karna
+      // Remote participants track listener (Video aur Audio dono ke liye)
       room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
         if (track.kind === Track.Kind.Video && videoRef.current) {
           track.attach(videoRef.current);
+        } else if (track.kind === Track.Kind.Audio && audioRef.current) {
+          track.attach(audioRef.current);
+          audioRef.current.play().catch((err) => console.log("Audio autoplay error:", err));
         }
       });
 
@@ -86,11 +90,11 @@ export default function LivePortal() {
         track.detach();
       });
 
-      // 2. Real-time participant counter update
+      // Participant count update
       room.on(RoomEvent.ParticipantConnected, () => updateParticipantCount(room));
       room.on(RoomEvent.ParticipantDisconnected, () => updateParticipantCount(room));
 
-      // 3. Chat aur Reaction messages receive karna
+      // Chat & Reactions
       room.on(RoomEvent.DataReceived, (payload) => {
         try {
           const str = new TextDecoder().decode(payload);
@@ -110,13 +114,12 @@ export default function LivePortal() {
       await room.connect(livekitUrl, data.token);
       updateParticipantCount(room);
 
-      // Agar Host hai toh local preview aur publishing shuru karein
+      // Agar Host hai toh camera & mic on karein
       if (isHost) {
         setStatus("Host media shuru ho raha hai...");
         await room.localParticipant.enableCameraAndMicrophone();
         await getCameras();
 
-        // Local Host preview attach karna
         const camTrack = Array.from(room.localParticipant.videoTrackPublications.values())[0]?.track;
         if (camTrack && videoRef.current) {
           camTrack.attach(videoRef.current);
@@ -145,7 +148,7 @@ export default function LivePortal() {
     setVideoDevices([]);
   };
 
-  // Host Mic Toggle
+  // Mic Mute / Unmute
   const toggleMic = async () => {
     if (roomRef.current && isHost) {
       const enabled = roomRef.current.localParticipant.isMicrophoneEnabled;
@@ -154,7 +157,7 @@ export default function LivePortal() {
     }
   };
 
-  // Host Camera Toggle
+  // Camera On / Off
   const toggleCamera = async () => {
     if (roomRef.current && isHost) {
       const enabled = roomRef.current.localParticipant.isCameraEnabled;
@@ -163,7 +166,7 @@ export default function LivePortal() {
     }
   };
 
-  // Multi-Camera Switch (Front, Back 1, Back 2, Wide, etc.)
+  // Camera Switcher
   const switchCamera = async () => {
     if (!roomRef.current || !isHost || videoDevices.length <= 1) return;
 
@@ -195,7 +198,7 @@ export default function LivePortal() {
     }
   };
 
-  // Screen Sharing Toggle
+  // Screen Sharing
   const toggleScreenShare = async () => {
     if (roomRef.current && isHost) {
       try {
@@ -208,7 +211,31 @@ export default function LivePortal() {
     }
   };
 
-  // Send Message (Host + Viewer dono use kar sakte hain)
+  // Fullscreen / Landscape toggle button
+  const toggleLandscapeFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        if (videoContainerRef.current?.requestFullscreen) {
+          await videoContainerRef.current.requestFullscreen();
+        }
+        // Mobile screen auto-rotate to landscape
+        if (screen.orientation && screen.orientation.lock) {
+          screen.orientation.lock("landscape").catch(() => {});
+        }
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        }
+        if (screen.orientation && screen.orientation.unlock) {
+          screen.orientation.unlock();
+        }
+      }
+    } catch (err) {
+      console.log("Landscape mode error:", err);
+    }
+  };
+
+  // Chat send
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!chatInput.trim() || !roomRef.current) return;
@@ -228,7 +255,7 @@ export default function LivePortal() {
     setChatInput("");
   };
 
-  // Send Reaction (❤️, 🔥)
+  // Reactions
   const sendReaction = async (emoji) => {
     if (!roomRef.current) return;
 
@@ -248,6 +275,9 @@ export default function LivePortal() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-3 font-sans">
+      {/* Audio element jisse viewers ko mic ki aawaz sunai de */}
+      <audio ref={audioRef} autoPlay />
+
       <h1 className="text-xl md:text-2xl font-bold mb-4 text-blue-400">
         Live Streaming Portal
       </h1>
@@ -305,7 +335,7 @@ export default function LivePortal() {
         <div className="w-full max-w-5xl flex flex-col lg:flex-row gap-4">
           {/* Main Video Box */}
           <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-3 md:p-4 flex flex-col shadow-xl">
-            {/* Header: Room Name, Viewer Count & Leave Button */}
+            {/* Header */}
             <div className="flex justify-between items-center mb-3">
               <div className="flex items-center gap-3">
                 <span className="text-xs md:text-sm font-semibold flex items-center gap-1.5">
@@ -324,8 +354,11 @@ export default function LivePortal() {
               </button>
             </div>
 
-            {/* Video Player + Overlay Animations */}
-            <div className="relative aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center">
+            {/* Video Container (With Landscape / Fullscreen Support) */}
+            <div
+              ref={videoContainerRef}
+              className="relative aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center"
+            >
               <video
                 ref={videoRef}
                 autoPlay
@@ -340,8 +373,18 @@ export default function LivePortal() {
                 </div>
               )}
 
-              {/* Floating Reaction Animation Layer */}
-              <div className="absolute bottom-4 right-4 pointer-events-none flex flex-col-reverse items-center overflow-hidden h-48 w-16">
+              {/* Landscape / Fullscreen Button on Video */}
+              <button
+                type="button"
+                onClick={toggleLandscapeFullscreen}
+                className="absolute top-2 right-2 bg-black/60 hover:bg-black/90 text-white p-1.5 rounded-md text-xs border border-white/20 transition z-10"
+                title="Landscape / Fullscreen"
+              >
+                🔄 Landscape ⛶
+              </button>
+
+              {/* Floating Reaction Animation */}
+              <div className="absolute bottom-4 right-4 pointer-events-none flex flex-col-reverse items-center overflow-hidden h-48 w-16 z-10">
                 {floatingReactions.map((r) => (
                   <span
                     key={r.id}
@@ -353,7 +396,7 @@ export default function LivePortal() {
               </div>
             </div>
 
-            {/* Reaction Buttons Bar (Har koi use kar sakta hai) */}
+            {/* Reactions & Mobile Camera Controls */}
             <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-800">
               <div className="flex gap-2">
                 <button
@@ -372,7 +415,7 @@ export default function LivePortal() {
                 </button>
               </div>
 
-              {/* Multi-Camera Switch Button (Sirf Host aur Phone ke liye) */}
+              {/* Multi-Camera Switcher */}
               {isHost && videoDevices.length > 1 && (
                 <button
                   type="button"
