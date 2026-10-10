@@ -7,8 +7,19 @@ import {
   Track,
   createLocalTracks,
   createLocalVideoTrack,
-  VideoPresets,
 } from "livekit-client";
+
+// 4K Ultra HD Profile Definition
+const resolution4K = {
+  width: 3840,
+  height: 2160,
+  frameRate: 30,
+};
+
+const encoding4K = {
+  maxBitrate: 8_000_000, // 8 Mbps for ultra-clear video
+  maxFramerate: 30,
+};
 
 export default function LivePortal() {
   const [userName, setUserName] = useState("");
@@ -23,7 +34,7 @@ export default function LivePortal() {
   const [viewerCount, setViewerCount] = useState(1);
   const [floatingReactions, setFloatingReactions] = useState([]);
 
-  // Host Controls & Auto Camera Mode ('user' = Front, 'environment' = Back)
+  // Host Controls & Auto Camera Mode
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -80,16 +91,10 @@ export default function LivePortal() {
         adaptiveStream: true,
         dynacast: true,
         autoSubscribe: true,
-        // High quality video publishing configuration
         videoCaptureDefaults: {
-          resolution: VideoPresets.h1080.resolution,
+          resolution: resolution4K,
         },
         publishDefaults: {
-          videoSimulcastLayers: [
-            VideoPresets.h1080,
-            VideoPresets.h720,
-            VideoPresets.h360,
-          ],
           videoCodec: "vp8",
           simulcast: true,
         },
@@ -129,9 +134,8 @@ export default function LivePortal() {
       updateParticipantCount(room);
 
       if (isHost) {
-        setStatus("High Quality Camera start ho raha hai...");
+        setStatus("4K Ultra HD Camera start ho raha hai...");
 
-        // 1080p FHD camera track request
         const localTracks = await createLocalTracks({
           audio: {
             echoCancellation: true,
@@ -140,13 +144,13 @@ export default function LivePortal() {
           },
           video: {
             facingMode: "user",
-            resolution: VideoPresets.h1080.resolution,
+            resolution: resolution4K,
           },
         });
 
         for (const track of localTracks) {
           await room.localParticipant.publishTrack(track, {
-            videoEncoding: VideoPresets.h1080.encoding,
+            videoEncoding: encoding4K,
           });
 
           if (track.kind === Track.Kind.Video) {
@@ -171,7 +175,7 @@ export default function LivePortal() {
         }, 300);
       }
 
-      setStatus(isHost ? "🔴 Live Broadcast On Air (HD)" : "📺 Streaming Connected (HD)");
+      setStatus(isHost ? "🔴 Live Broadcast On Air (4K UHD)" : "📺 Streaming Connected (4K UHD)");
     } catch (err) {
       console.error(err);
       setStatus("Error: " + err.message);
@@ -214,7 +218,7 @@ export default function LivePortal() {
     }
   };
 
-  // 1-Click Auto Front / Back Switch with High Quality
+  // 1-Click Auto Front / Back Switch in 4K
   const toggleCameraFacing = async () => {
     if (!roomRef.current || !isHost) return;
 
@@ -232,11 +236,11 @@ export default function LivePortal() {
 
       const newTrack = await createLocalVideoTrack({
         facingMode: { ideal: nextMode },
-        resolution: VideoPresets.h1080.resolution,
+        resolution: resolution4K,
       });
 
       await roomRef.current.localParticipant.publishTrack(newTrack, {
-        videoEncoding: VideoPresets.h1080.encoding,
+        videoEncoding: encoding4K,
       });
       localVideoTrackRef.current = newTrack;
 
@@ -251,13 +255,13 @@ export default function LivePortal() {
     }
   };
 
-  // Screen Sharing with HD preset
+  // Screen Sharing
   const toggleScreenShare = async () => {
     if (roomRef.current && isHost) {
       try {
         const enabled = roomRef.current.localParticipant.isScreenShareEnabled;
         await roomRef.current.localParticipant.setScreenShareEnabled(!enabled, {
-          resolution: VideoPresets.h1080.resolution,
+          resolution: resolution4K,
         });
         setIsScreenSharing(!enabled);
       } catch (e) {
@@ -289,7 +293,7 @@ export default function LivePortal() {
     }
   };
 
-  // Chat message send
+  // Send Chat
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!chatInput.trim() || !roomRef.current) return;
@@ -398,8 +402,8 @@ export default function LivePortal() {
                 <span className="text-xs bg-slate-800 border border-slate-700 px-2 py-0.5 rounded-full text-slate-300">
                   👥 {viewerCount} Live
                 </span>
-                <span className="text-[10px] bg-emerald-950 border border-emerald-700 text-emerald-300 px-2 py-0.5 rounded-full font-bold">
-                  1080p FHD
+                <span className="text-[10px] bg-purple-950 border border-purple-700 text-purple-300 px-2 py-0.5 rounded-full font-bold">
+                  4K UHD
                 </span>
               </div>
               <button
@@ -452,7 +456,7 @@ export default function LivePortal() {
               </div>
             </div>
 
-            {/* Reactions & Auto Camera Switch Button */}
+            {/* Reactions & Auto Flip Camera */}
             <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-800">
               <div className="flex gap-2">
                 <button
@@ -471,7 +475,7 @@ export default function LivePortal() {
                 </button>
               </div>
 
-              {/* 1-Click Front / Back Camera Switch */}
+              {/* 1-Click Flip Button */}
               {isHost && (
                 <button
                   type="button"
