@@ -22,7 +22,7 @@ const encoding4K = {
 
 export default function LivePortal() {
   const [userName, setUserName] = useState("");
-  const roomName = "cjp-live"; // Single fixed official room
+  const roomName = "cjp-live";
   const [isHost, setIsHost] = useState(false);
   const [hostPin, setHostPin] = useState("");
   const [inRoom, setInRoom] = useState(false);
@@ -328,7 +328,7 @@ export default function LivePortal() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-3 font-sans">
+    <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-3 font-sans relative">
       <audio ref={audioRef} autoPlay />
 
       <h1 className="text-xl md:text-2xl font-bold mb-4 text-blue-400">
@@ -338,7 +338,7 @@ export default function LivePortal() {
       {!inRoom ? (
         <form
           onSubmit={joinRoom}
-          className="bg-slate-900 border border-slate-800 p-6 rounded-xl w-full max-w-sm flex flex-col gap-4 shadow-xl"
+          className="bg-slate-900 border border-slate-800 p-6 rounded-xl w-full max-w-sm flex flex-col gap-4 shadow-xl z-10"
         >
           <div>
             <label className="text-xs text-slate-400 mb-1 block">Aapka Naam:</label>
@@ -375,7 +375,6 @@ export default function LivePortal() {
             </label>
           </div>
 
-          {/* Host PIN Input sirf Host tick karne par aayega */}
           {isHost && (
             <div>
               <label className="text-xs text-amber-400 mb-1 block">Host Secret PIN:</label>
@@ -398,7 +397,7 @@ export default function LivePortal() {
           </button>
         </form>
       ) : (
-        <div className="w-full max-w-5xl flex flex-col lg:flex-row gap-4">
+        <div className="w-full max-w-5xl flex flex-col lg:flex-row gap-4 z-10 pb-16 lg:pb-0">
           <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-3 md:p-4 flex flex-col shadow-xl">
             <div className="flex justify-between items-center mb-3">
               <div className="flex items-center gap-3">
@@ -572,10 +571,29 @@ export default function LivePortal() {
       )}
 
       {status && (
-        <p className="mt-3 text-xs text-yellow-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full shadow">
+        <p className="mt-3 text-xs text-yellow-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full shadow z-10">
           {status}
         </p>
       )}
+
+      {/* Floating Corner Branding Badge */}
+      <footer className="fixed bottom-3 right-3 z-50 bg-slate-900/90 backdrop-blur-md border border-slate-700/70 shadow-2xl px-3.5 py-2 rounded-xl flex items-center gap-2.5 transition hover:border-pink-500/60">
+        <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+        <div className="text-right leading-tight">
+          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+            Architect: <span className="text-slate-200">Pranav Sagar Patil</span>
+          </p>
+          <a
+            href="https://www.instagram.com/pranav__jagtap.0001"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] font-bold text-pink-400 hover:text-pink-300 transition flex items-center justify-end gap-1 mt-0.5"
+          >
+            <span>📷</span>
+            <span>@pranav__jagtap.0001</span>
+          </a>
+        </div>
+      </footer>
     </main>
   );
 }
