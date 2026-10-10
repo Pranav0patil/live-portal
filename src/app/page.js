@@ -51,6 +51,16 @@ export default function LivePortal() {
     }, 2000);
   };
 
+  // Helper track attach karne ke liye (video & audio)
+  const attachTrack = (track) => {
+    if (track.kind === Track.Kind.Video && videoRef.current) {
+      track.attach(videoRef.current);
+    } else if (track.kind === Track.Kind.Audio && audioRef.current) {
+      track.attach(audioRef.current);
+      audioRef.current.play().catch((err) => console.log("Audio autoplay error:", err));
+    }
+  };
+
   const joinRoom = async (e) => {
     e.preventDefault();
     if (!userName.trim() || !roomName.trim()) {
@@ -76,14 +86,9 @@ export default function LivePortal() {
       });
       roomRef.current = room;
 
-      // Remote participants track listener (Video aur Audio dono ke liye)
-      room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-        if (track.kind === Track.Kind.Video && videoRef.current) {
-          track.attach(videoRef.current);
-        } else if (track.kind === Track.Kind.Audio && audioRef.current) {
-          track.attach(audioRef.current);
-          audioRef.current.play().catch((err) => console.log("Audio autoplay error:", err));
-        }
+      // 1. Live aane wale naye tracks ko attach karna
+      room.on(RoomEvent.TrackSubscribed, (track) => {
+        attachTrack(track);
       });
 
       room.on(RoomEvent.TrackUnsubscribed, (track) => {
@@ -113,6 +118,17 @@ export default function LivePortal() {
       const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
       await room.connect(livekitUrl, data.token);
       updateParticipantCount(room);
+
+      // 2. Agar Viewer hai, toh jo Host pehle se live hai uski tracks turant dhoondh kar attach karo
+      if (!isHost) {
+        room.remoteParticipants.forEach((participant) => {
+          participant.trackPublications.forEach((pub) => {
+            if (pub.isSubscribed && pub.track) {
+              attachTrack(pub.track);
+            }
+          });
+        });
+      }
 
       // Agar Host hai toh camera & mic on karein
       if (isHost) {
@@ -211,14 +227,13 @@ export default function LivePortal() {
     }
   };
 
-  // Fullscreen / Landscape toggle button
+  // Fullscreen / Landscape toggle
   const toggleLandscapeFullscreen = async () => {
     try {
       if (!document.fullscreenElement) {
         if (videoContainerRef.current?.requestFullscreen) {
           await videoContainerRef.current.requestFullscreen();
         }
-        // Mobile screen auto-rotate to landscape
         if (screen.orientation && screen.orientation.lock) {
           screen.orientation.lock("landscape").catch(() => {});
         }
@@ -275,7 +290,6 @@ export default function LivePortal() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-3 font-sans">
-      {/* Audio element jisse viewers ko mic ki aawaz sunai de */}
       <audio ref={audioRef} autoPlay />
 
       <h1 className="text-xl md:text-2xl font-bold mb-4 text-blue-400">
@@ -354,7 +368,7 @@ export default function LivePortal() {
               </button>
             </div>
 
-            {/* Video Container (With Landscape / Fullscreen Support) */}
+            {/* Video Container */}
             <div
               ref={videoContainerRef}
               className="relative aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center"
@@ -373,7 +387,7 @@ export default function LivePortal() {
                 </div>
               )}
 
-              {/* Landscape / Fullscreen Button on Video */}
+              {/* Landscape / Fullscreen Button */}
               <button
                 type="button"
                 onClick={toggleLandscapeFullscreen}
