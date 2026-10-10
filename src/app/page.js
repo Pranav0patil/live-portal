@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Room, RoomEvent, Track, createLocalVideoTrack } from "livekit-client";
+import {
+  Room,
+  RoomEvent,
+  Track,
+  createLocalTracks,
+  createLocalVideoTrack,
+} from "livekit-client";
 
 export default function LivePortal() {
   const [userName, setUserName] = useState("");
@@ -27,8 +33,9 @@ export default function LivePortal() {
   const videoRef = useRef(null);
   const audioRef = useRef(null);
   const videoContainerRef = useRef(null);
+  const localVideoTrackRef = useRef(null);
 
-  // Available camera list
+  // Available camera list nikalne ke liye
   const getCameras = async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -51,13 +58,13 @@ export default function LivePortal() {
     }, 2000);
   };
 
-  // Helper track attach karne ke liye (video & audio)
-  const attachTrack = (track) => {
+  const attachTrackSafely = (track) => {
     if (track.kind === Track.Kind.Video && videoRef.current) {
       track.attach(videoRef.current);
+      videoRef.current.play().catch(() => {});
     } else if (track.kind === Track.Kind.Audio && audioRef.current) {
       track.attach(audioRef.current);
-      audioRef.current.play().catch((err) => console.log("Audio autoplay error:", err));
+      audioRef.current.play().catch(() => {});
     }
   };
 
@@ -79,16 +86,17 @@ export default function LivePortal() {
         throw new Error(data.error || "Token fetch fail ho gaya");
       }
 
-      setStatus("Connecting to room...");
+      setStatus("Room se connect ho raha hai...");
       const room = new Room({
         adaptiveStream: true,
         dynacast: true,
+        autoSubscribe: true,
       });
       roomRef.current = room;
 
-      // 1. Live aane wale naye tracks ko attach karna
+      // Viewer track subscribed event
       room.on(RoomEvent.TrackSubscribed, (track) => {
-        attachTrack(track);
+        attachTrackSafely(track);
       });
 
       room.on(RoomEvent.TrackUnsubscribed, (track) => {
@@ -117,32 +125,47 @@ export default function LivePortal() {
 
       const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
       await room.connect(livekitUrl, data.token);
+
+      // UI state activate karna taaki video element DOM me render ho jaye
+      setInRoom(true);
       updateParticipantCount(room);
 
-      // 2. Agar Viewer hai, toh jo Host pehle se live hai uski tracks turant dhoondh kar attach karo
-      if (!isHost) {
-        room.remoteParticipants.forEach((participant) => {
-          participant.trackPublications.forEach((pub) => {
-            if (pub.isSubscribed && pub.track) {
-              attachTrack(pub.track);
-            }
-          });
-        });
-      }
-
-      // Agar Host hai toh camera & mic on karein
+      // Agar Host hai: Direct local tracks banakar publish karenge
       if (isHost) {
-        setStatus("Host media shuru ho raha hai...");
-        await room.localParticipant.enableCameraAndMicrophone();
+        setStatus("Camera start ho raha hai...");
         await getCameras();
 
-        const camTrack = Array.from(room.localParticipant.videoTrackPublications.values())[0]?.track;
-        if (camTrack && videoRef.current) {
-          camTrack.attach(videoRef.current);
+        const localTracks = await createLocalTracks({
+          audio: true,
+          video: { facingMode: "user" },
+        });
+
+        for (const track of localTracks) {
+          await room.localParticipant.publishTrack(track);
+          if (track.kind === Track.Kind.Video) {
+            localVideoTrackRef.current = track;
+            // Short delay to ensure video element is mounted in DOM
+            setTimeout(() => {
+              if (videoRef.current) {
+                track.attach(videoRef.current);
+                videoRef.current.play().catch(() => {});
+              }
+            }, 100);
+          }
         }
+      } else {
+        // Agar Viewer late join kar raha hai, toh active host tracks attach karein
+        setTimeout(() => {
+          room.remoteParticipants.forEach((p) => {
+            p.trackPublications.forEach((pub) => {
+              if (pub.track) {
+                attachTrackSafely(pub.track);
+              }
+            });
+          });
+        }, 300);
       }
 
-      setInRoom(true);
       setStatus(isHost ? "🔴 Live Broadcast On Air" : "📺 Streaming Connected");
     } catch (err) {
       console.error(err);
@@ -155,6 +178,10 @@ export default function LivePortal() {
       await roomRef.current.disconnect();
       roomRef.current = null;
     }
+    if (localVideoTrackRef.current) {
+      localVideoTrackRef.current.stop();
+      localVideoTrackRef.current = null;
+    }
     setInRoom(false);
     setStatus("");
     setMessages([]);
@@ -164,7 +191,7 @@ export default function LivePortal() {
     setVideoDevices([]);
   };
 
-  // Mic Mute / Unmute
+  // Host Mic Toggle
   const toggleMic = async () => {
     if (roomRef.current && isHost) {
       const enabled = roomRef.current.localParticipant.isMicrophoneEnabled;
@@ -173,7 +200,7 @@ export default function LivePortal() {
     }
   };
 
-  // Camera On / Off
+  // Host Camera Toggle
   const toggleCamera = async () => {
     if (roomRef.current && isHost) {
       const enabled = roomRef.current.localParticipant.isCameraEnabled;
@@ -182,7 +209,7 @@ export default function LivePortal() {
     }
   };
 
-  // Camera Switcher
+  // Multi-Camera Switch
   const switchCamera = async () => {
     if (!roomRef.current || !isHost || videoDevices.length <= 1) return;
 
@@ -198,14 +225,17 @@ export default function LivePortal() {
         roomRef.current.localParticipant.videoTrackPublications.values()
       )[0];
 
-      if (currentPub) {
+      if (currentPub && currentPub.track) {
         await roomRef.current.localParticipant.unpublishTrack(currentPub.track);
         currentPub.track.stop();
       }
 
       await roomRef.current.localParticipant.publishTrack(newTrack);
+      localVideoTrackRef.current = newTrack;
+
       if (videoRef.current) {
         newTrack.attach(videoRef.current);
+        videoRef.current.play().catch(() => {});
       }
 
       setCurrentCameraIndex(nextIndex);
@@ -227,7 +257,7 @@ export default function LivePortal() {
     }
   };
 
-  // Fullscreen / Landscape toggle
+  // Landscape / Fullscreen Toggle
   const toggleLandscapeFullscreen = async () => {
     try {
       if (!document.fullscreenElement) {
@@ -250,7 +280,7 @@ export default function LivePortal() {
     }
   };
 
-  // Chat send
+  // Send Message
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!chatInput.trim() || !roomRef.current) return;
@@ -270,7 +300,7 @@ export default function LivePortal() {
     setChatInput("");
   };
 
-  // Reactions
+  // Send Reaction
   const sendReaction = async (emoji) => {
     if (!roomRef.current) return;
 
